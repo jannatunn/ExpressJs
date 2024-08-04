@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "SET DEBUG=express:* & npm start",
+    "dev": "SET DEBUG=warung-kenangan:* && nodemon ./bin/www",
     "start": "node ./bin/www"
   },
   "dependencies": {
@@ -15,6 +15,7 @@
     "http-errors": "~1.6.3",
     "mongoose": "^8.5.2",
     "morgan": "~1.9.1",
+    "multer": "^1.4.5-lts.1",
     "pug": "2.0.0-beta11"
   }
 }
