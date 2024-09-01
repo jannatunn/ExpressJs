@@ -1,4 +1,4 @@
-const Tag = require("../models/TagModel");
+const Tag = require("../models/tagModel");
 
 // POST - Create a new Tag
 const store = async (req, res, next) => {

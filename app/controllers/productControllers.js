@@ -1,212 +1,364 @@
 const path = require("path");
 const fs = require("fs");
-const os = require("os");
 const config = require("../config");
 const Product = require("../models/productModel");
+const Category = require("../models/categoryModel");
+const Tags = require("../models/tagModel");
 
 // POST - Create a new product
-const store = async (req, res, next) => {
+const store = async (req, res) => {
   try {
-    let payload = req.body; // Retrieve the request body (product details)
+    let payload = req.body;
 
-    // Check if a file has been uploaded
+    // Validasi nama produk
+    const existingProduct = await Product.findOne({ name: payload.name });
+    console.log("existingProduct ->", existingProduct);
+    if (existingProduct) {
+      return res.status(400).json({
+        message: "Nama produk sudah ada"
+      });
+    }
+
+    // Validasi kategori
+    if (payload.category) {
+      let category = await Category.findOne({
+        name: { $regex: payload.category, $options: "i" },
+      });
+      if (category) {
+        payload.category = category._id;
+      } else {
+        delete payload.category;
+      }
+    }
+
+    // Validasi tag
+    if (payload.tags && payload.tags.length > 0) {
+      let tags = await Tags.find({ name: { $in: payload.tags } });
+      if (tags.length) {
+        payload.tags = tags.map(tag => tag._id);
+      } else {
+        delete payload.tags;
+      }
+    }
+
     if (req.file) {
-      let tmp_path = req.file.path; // Temporary path of the uploaded file
-      let originalExt = req.file.originalname.split(".").pop(); // Get the original file extension
-      let filename = req.file.filename + "." + originalExt; // Create a new filename with original extension
+      let tmp_path = req.file.path;
+      let originalExt = req.file.originalname.split(".").pop();
+      let filename = req.file.filename + "." + originalExt;
       let target_path = path.resolve(
         config.rootPath,
         `public/images/products/${filename}`
-      ); // Set the target path where the file will be saved
+      );
 
-      const src = fs.createReadStream(tmp_path); // Create a read stream from the temporary file
-      const dest = fs.createWriteStream(target_path); // Create a write stream to the target path
-      src.pipe(dest); // Pipe the read stream to the write stream
+      const src = fs.createReadStream(tmp_path);
+      const dest = fs.createWriteStream(target_path);
+      src.pipe(dest);
 
-      src.on("end", async () => { // Listen for the end of the stream
+      src.on("end", async () => {
         try {
-          // Create a new product with the uploaded image filename
           let product = new Product({ ...payload, image_url: filename });
-          await product.save(); // Save the product to the database
+          await product.save();
 
-          return res.json({
-            message: "successfully added a product first",
-            data: product
+          return res.status(201).json({
+            message: "Product successfully added",
+            data: product,
           });
         } catch (error) {
-          fs.unlinkSync(target_path); // Delete the file if saving the product fails
-          
-          // Handle validation errors
-          if (error && error.name === "ValidationError") {
-            return res.json({
-              error: 1,
-              message: error.message,
-              fields: error.errors,
+          fs.unlinkSync(target_path);
+
+          if (error.name === "ValidationError") {
+            return res.status(400).json({
+              message: "Validation error",
+              errors: error.errors,
             });
           }
 
-          next(error); // Pass any other errors to the error handler
+          return res.status(500).json({
+            message: "Internal server error",
+            error: error.message,
+          });
         }
       });
 
-      src.on("error", async (error) => { // Handle stream errors
+      src.on("error", (error) => {
         console.error("Error during file upload:", error);
-        next(error);
+        return res.status(500).json({
+          message: "Error during file upload",
+          error: error.message,
+        });
       });
     } else {
-      // If no file is uploaded, create the product without an image
       let product = new Product(payload);
-      await product.save(); // Save the product to the database
-      return res.json({
-        message: "successfully added a product second",
-        data: product
+      await product.save();
+      return res.status(201).json({
+        message: "Product successfully added without image",
+        data: product,
       });
     }
   } catch (error) {
-    // Handle validation errors
-    if (error && error.name === "ValidationError") {
-      return res.json({
-        error: 1,
-        message: error.message,
-        fields: error.errors,
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        message: "Validation error",
+        errors: error.errors,
       });
     }
-
-    next(error); // Pass any other errors to the error handler
+    return res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 };
 
 // UPDATE - Update an existing product
-const update = async (req, res, next) => {
+const update = async (req, res) => {
   try {
-    let payload = req.body; // Retrieve the request body
-    let { id } = req.params; // Get the product ID from request parameters
+    let payload = req.body;
+    let { id } = req.params;
 
-    // Check if a new file is uploaded
+    if (payload.category) {
+      let category = await Category.findOne({
+        name: { $regex: payload.category, $options: "i" },
+      });
+      if (category) {
+        payload.category = category._id;
+      } else {
+        delete payload.category;
+      }
+    }
+
     if (req.file) {
-      let tmp_path = req.file.path; // Temporary path of the uploaded file
-      let originalExt = req.file.originalname.split('.').pop(); // Get the original file extension
-      let filename = `${req.file.filename}.${originalExt}`; // Create a new filename
-      let target_path = path.resolve(config.rootPath, `public/images/products/${filename}`); // Set the target path
+      let tmp_path = req.file.path;
+      let originalExt = req.file.originalname.split(".").pop();
+      let filename = `${req.file.filename}.${originalExt}`;
+      let target_path = path.resolve(
+        config.rootPath,
+        `public/images/products/${filename}`
+      );
 
-      const src = fs.createReadStream(tmp_path); // Create a read stream from the temporary file
-      const dest = fs.createWriteStream(target_path); // Create a write stream to the target path
-      src.pipe(dest); // Pipe the read stream to the write stream
+      const src = fs.createReadStream(tmp_path);
+      const dest = fs.createWriteStream(target_path);
+      src.pipe(dest);
 
-      src.on('end', async () => { // Listen for the end of the stream
+      src.on("end", async () => {
         try {
-          // Find the product by ID
           let product = await Product.findById(id);
-          console.log("product 1->", product); // Log the product for debugging
 
-          // Delete the current image if it exists
           let currentImagePath = `${config.rootPath}/public/images/products/${product.image_url}`;
           if (fs.existsSync(currentImagePath)) {
-            fs.unlinkSync(currentImagePath); // Delete the current image
-            console.log(`File ${currentImagePath} deleted successfully.`);
-          } else {
-            console.log(`File ${currentImagePath} not found.`);
+            fs.unlinkSync(currentImagePath);
           }
 
-          // Update the payload to include the new image filename
           payload.image_url = filename;
 
-          // Update the product in the database
           product = await Product.findByIdAndUpdate(id, payload, {
             new: true,
-            runValidators: true // Run validation on the updated fields
+            runValidators: true,
           });
 
-          return res.json({
-            message: "Image and product data updated successfully.",
-            data: product
+          return res.status(200).json({
+            message: "Product updated successfully with new image",
+            data: product,
           });
         } catch (error) {
-          fs.unlinkSync(target_path); // Delete the new file if an error occurs
-          
-          // Handle validation errors
-          if (error && error.name === "ValidationError") {
-            return res.json({
-              error: 1,
-              message: error.message,
-              fields: error.errors,
+          fs.unlinkSync(target_path);
+
+          if (error.name === "ValidationError") {
+            return res.status(400).json({
+              message: "Validation error",
+              errors: error.errors,
             });
           }
-          next(error); // Pass any other errors to the error handler
+          return res.status(500).json({
+            message: "Internal server error",
+            error: error.message,
+          });
         }
       });
 
-      src.on('error', (error) => { // Handle stream errors
+      src.on("error", (error) => {
         console.error("Error during file upload:", error);
-        next(error);
+        return res.status(500).json({
+          message: "Error during file upload",
+          error: error.message,
+        });
       });
     } else {
-      // If no new file is uploaded, update the product without changing the image
       let product = await Product.findByIdAndUpdate(id, payload, {
         new: true,
-        runValidators: true // Run validation on the updated fields
+        runValidators: true,
       });
-      return res.json({
-        message: "Product data updated successfully without changing the image.",
-        data: product
+      return res.status(200).json({
+        message: "Product data updated successfully without changing the image",
+        data: product,
       });
     }
   } catch (error) {
-    // Handle validation errors
-    if (error && error.name === "ValidationError") {
-      return res.json({
-        error: 1,
-        message: error.message,
-        fields: error.errors,
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        message: "Validation error",
+        errors: error.errors,
       });
     }
-    next(error); // Pass any other errors to the error handler
+    return res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 };
 
 // GET - Retrieve a list of products
-const index = async (req, res, next) => {
-  try {
-    let { skip = 0, limit = 0 } = req.query; // Retrieve pagination parameters from query
-    const totalProducts = await Product.countDocuments(); // Get the total number of products
-    let product = await Product.find().skip(parseInt(skip)).limit(parseInt(limit)); // Retrieve products with pagination
+// const index = async (req, res) => {
+//   try {
+//     let { skip = 0, limit = 0, q = "", category = "", tags = [] } = req.query;
+//     let criteria = {};
 
-    return res.json({
-      message: `Total products: ${totalProducts}`,
-      data: product // Return the list of products
+//     if (q.length) {
+//       criteria.name = { $regex: `${q}`, $options: 'i' };
+//     }
+
+//     if (category.length) {
+//       const categoryResult = await Category.findOne({ name: { $regex: `${category}`, $options: 'i' } });
+//       if (categoryResult) {
+//         criteria.category = categoryResult._id;
+//       } else {
+//         return res.status(404).json({
+//           message: 'No products found',
+//           data: []
+//         });
+//       }
+//     }
+
+//     if (tags.length) {
+//       const tagsResult = await Tags.find({ name: { $in: tags } });
+//       if (tagsResult.length > 0) {
+//         criteria.tags = { $in: tagsResult.map(tag => tag._id) };
+//       } else {
+//         return res.status(404).json({
+//           message: 'No products found',
+//           data: []
+//         });
+//       }
+//     }
+
+//     const count = await Product.countDocuments(criteria);
+
+//     if (count === 0) {
+//       return res.status(404).json({
+//         message: 'No products found',
+//         data: []
+//       });
+//     }
+
+//     const products = await Product.find(criteria)
+//       .skip(parseInt(skip))
+//       .limit(parseInt(limit))
+//       .populate("category");
+
+//     return res.status(200).json({
+//       message: `Total: ${count} product`,
+//       data: products,
+//     });
+//   } catch (error) {
+//     return res.status(500).json({
+//       message: "Internal server error",
+//       error: error.message,
+//     });
+//   }
+// };
+const index = async (req, res) => {
+  try {
+    let { skip = 0, limit = 0, q = "", category = "", tags = [] } = req.query;
+
+    // Validasi input query
+    skip = parseInt(skip) || 0;
+    limit = parseInt(limit) || 0;
+    tags = Array.isArray(tags) ? tags : [];
+
+    let criteria = {};
+
+    if (q.length) {
+      criteria.name = { $regex: `${q}`, $options: 'i' };
+    }
+
+    if (category.length) {
+      const categoryResult = await Category.findOne({ name: { $regex: `${category}`, $options: 'i' } });
+      if (categoryResult) {
+        criteria.category = categoryResult._id;
+      } else {
+        return res.status(404).json({
+          message: 'No products found',
+          data: []
+        });
+      }
+    }
+
+    if (tags.length) {
+      const tagsResult = await Tags.find({ name: { $in: tags } });
+      if (tagsResult.length > 0) {
+        criteria.tags = { $in: tagsResult.map(tag => tag._id) };
+      } else {
+        return res.status(404).json({
+          message: 'No products found',
+          data: []
+        });
+      }
+    }
+
+    const count = await Product.countDocuments(criteria);
+
+    if (count === 0) {
+      return res.status(404).json({
+        message: 'No products found',
+        data: []
+      });
+    }
+
+    const products = await Product.find(criteria)
+      .skip(skip)
+      .limit(limit)
+      .populate("category");
+
+    return res.status(200).json({
+      message: `Total: ${count} product(s)`,
+      data: products,
     });
   } catch (error) {
-    next(error); // Pass any errors to the error handler
+    console.error("Error in index function:", error); // Menambahkan log error untuk debugging
+    return res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
   }
 };
 
+
 // DELETE - Delete a product
-const destroy = async (req, res, next) => {
+const destroy = async (req, res) => {
   try {
-    // Find and delete the product by ID
     let product = await Product.findByIdAndDelete(req.params.id);
 
-    // Delete the current image if it exists
-    let currentImage = `${config.rootPath}/public/images/products/${product.image_url}`; // Set the path of the current image
-    if (fs.existsSync(currentImage)) { // Check if the image file exists
-      fs.unlinkSync(currentImage); // Delete the image file
-      console.log(`File ${currentImage} deleted successfully.`);
-    } else {
-      console.log(`File ${currentImage} not found.`);
+    if (product && product.image_url) {
+      let currentImagePath = `${config.rootPath}/public/images/products/${product.image_url}`;
+      if (fs.existsSync(currentImagePath)) {
+        fs.unlinkSync(currentImagePath);
+      }
     }
 
-    return res.json({
-      message: "Deleted successfully",
-      data: product // Return the deleted product data
+    return res.status(200).json({
+      message: "Product deleted successfully",
+      data: product,
     });
   } catch (error) {
-    next(error); // Pass any errors to the error handler
+    return res.status(500).json({
+      message: "Internal server error",
+      error: error.message,
+    });
   }
-}
+};
 
 module.exports = {
   store,
   index,
   update,
-  destroy
+  destroy,
 };
