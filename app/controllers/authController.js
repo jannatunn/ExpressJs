@@ -1,9 +1,9 @@
-const bcrypt = require("bcrypt");
-const User = require("../models/userModel");
-const passport = require("passport");
-const jwt = require("jsonwebtoken");
-const config = require("../config");
-const { getToken } = require("../../utils/index");
+const argon2 = require('argon2');
+const User = require('../models/userModel');
+const passport = require('passport');
+const jwt = require('jsonwebtoken');
+const config = require('../config');
+const { getToken } = require('../../utils/index');
 
 const register = async (req, res, next) => {
   try {
@@ -20,9 +20,9 @@ const register = async (req, res, next) => {
       return res.status(400).json({ error: 1, message: 'Email sudah terdaftar' });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(payload.password, 10);
-    console.log('Hashed password:', hashedPassword);
+    // Hash password dengan Argon2
+    const hashedPassword = await argon2.hash(payload.password);
+    console.log('Hashed password (register):', hashedPassword);
 
     // Buat user baru
     let user = new User({ ...payload, password: hashedPassword });
@@ -48,8 +48,8 @@ const localStrategy = async (email, password, done) => {
     // Hash password dari user untuk debugging
     console.log('Hashed password from DB:', user.password);
 
-    // Bandingkan password yang diberikan dengan password yang di-hash
-    const isMatch = await bcrypt.compare(password, user.password);
+    // Bandingkan password yang diberikan dengan password yang di-hash menggunakan Argon2
+    const isMatch = await argon2.verify(user.password, password);
     console.log('Password match:', isMatch);
 
     // Jika password cocok, kembalikan pengguna tanpa field password
@@ -64,12 +64,12 @@ const localStrategy = async (email, password, done) => {
   }
 };
 
-
-
 const login = async (req, res, next) => {
   passport.authenticate('local', async function (err, user) {
     if (err) return next(err);
-console.log("user di login >", user)
+
+    console.log("user di login >", user);
+    
     if (!user) {
       return res.status(401).json({ error: 1, message: 'Email or password incorrect' });
     }
@@ -83,7 +83,7 @@ console.log("user di login >", user)
       // secure: true // Uncomment if using HTTPS
     });
 
-    console.log('res.json >', res.json.message)
+    console.log('res.json >', res.json.message);
     return res.json({
       message: 'Login successful',
       user,
@@ -96,7 +96,7 @@ const logout = async (req, res, next) => {
   try {
     const token = getToken(req);
     if (!token) {
-      return res.status(400).json({ error: 1, message: 'Tidak ada Tooken, Anda Harus Login Terlebih Dahulu' });
+      return res.status(400).json({ error: 1, message: 'Tidak ada token, Anda harus login terlebih dahulu' });
     }
 
     await User.findOneAndUpdate(
@@ -112,16 +112,16 @@ const logout = async (req, res, next) => {
   }
 };
 
-
 const me = (req, res, next) => {
   if (!req.user) {
-    res.json({
+    return res.json({
       err: 1,
-      message: `You're not login or token expired`,
+      message: `You're not logged in or token expired`,
     });
   }
   res.json(req.user);
 };
+
 module.exports = {
   register,
   localStrategy,
